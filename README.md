@@ -317,16 +317,6 @@ This makes it especially useful for embedded graphics where:
 * Images are relatively small
 * Images contain large areas of solid color
 
-## License
-
-Add your preferred license here.
-
-For example:
-
-```text
-MIT License
-```
-
 ---
 
 **MONETRIX Image-to-Arduino TFT Converter**
