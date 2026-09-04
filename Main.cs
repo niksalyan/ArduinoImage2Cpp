@@ -15,35 +15,40 @@ namespace Image2Cpp
         {
             try
             {
-                pictureBox1.Image = dataInputModel.Image;
+                
                 if (dataInputModel.Image != null)
                 {
-                    var r = ArduinoImageConverter.Convert(dataInputModel.Image, dataInputModel.Width, dataInputModel.Height, dataInputModel.Colors, dataInputModel.Dithering);
-
+                    var r = ArduinoImageConverter.Convert(dataInputModel);
+                    
                     if (dataInputModel.ImageBox)
                     {
-                        var rb = ArduinoImageBoxConverter.Convert(r);
+                        var rb = ArduinoImageBoxConverter.Convert(r, dataInputModel.MaxArraySize);
+                        pictureBox1.Image = rb.ToBitmap();
                         textBox1.Text = rb.ToArduinoCode(
                             dataInputModel.Name ?? "IMAGE",
-                            dataInputModel.UseColor565
+                            dataInputModel.UseColor565,
+                            dataInputModel.IncludeRenderFunction
                             );
                     } else
                     {
+                        pictureBox1.Image = r.ToBitmap();
                         textBox1.Text = r.ToArduinoCode(
                             dataInputModel.Name ?? "IMAGE",
                             dataInputModel.UseColor565,
-                            dataInputModel.IncludeGetPixel
+                            dataInputModel.IncludeRenderFunction
                             );
                     }
                     
                 }
                 else
                 {
+                    pictureBox1.Image = null;
                     textBox1.Text = "Image Not Selected";
                 }
             }
             catch (Exception ex)
             {
+                pictureBox1.Image = null;
                 textBox1.Text = $"Error: {ex.Message}";
             }
         }
