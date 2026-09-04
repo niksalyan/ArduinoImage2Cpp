@@ -4,6 +4,8 @@ A lightweight image conversion algorithm that converts **paletted images into op
 
 Instead of storing and drawing an entire bitmap pixel-by-pixel, the converter analyzes the image and represents it as a collection of **colored rectangles (boxes)**. These boxes can then be rendered using `fillRect()`, significantly reducing the amount of drawing operations required on resource-constrained microcontrollers.
 
+![Converter Screenshot](screenshot.jpg)
+
 ## Features
 
 * 🖼️ Supports **paletted / indexed-color images**
