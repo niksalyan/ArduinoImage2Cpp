@@ -1,5 +1,11 @@
 # Image to Arduino TFT Converter
 
+After struggling with the available image2cpp tooll, I wasn't able to get decent results on my 3.5" TFT display, so I decided to write my own.
+
+It supports a Box Rendering mode, which allows you to draw decent-quality graphics much faster than the original pixel-by-pixel approach. This also lets you fit a significant amount of graphics into the Arduino's flash memory.
+
+The rendering function is included in the code, and transparency is supported as well.
+
 A lightweight image conversion algorithm that converts **paletted images into optimized C++ data for Arduino TFT displays**.
 
 Instead of storing and drawing an entire bitmap pixel-by-pixel, the converter analyzes the image and represents it as a collection of **colored rectangles (boxes)**. These boxes can then be rendered using `fillRect()`, significantly reducing the amount of drawing operations required on resource-constrained microcontrollers.
