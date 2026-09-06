@@ -38,6 +38,9 @@ public static class ArduinoImageConverter
         // RGB palette
         public Color[] Palette { get; }
 
+        // Transparent palette index (-1 = none)
+        public int TransparentIndex { get; }
+
         public int ColorsCount => Palette.Length;
 
         public int BitsPerPixel => (int)ColorDepth;
@@ -47,13 +50,15 @@ public static class ArduinoImageConverter
             int height,
             ColorDepth colorDepth,
             byte[] data,
-            Color[] palette)
+            Color[] palette,
+            int transparentIndex = -1)
         {
             Width = width;
             Height = height;
             ColorDepth = colorDepth;
             Data = data;
             Palette = palette;
+            TransparentIndex = transparentIndex;
         }
 
 
@@ -143,6 +148,16 @@ public static class ArduinoImageConverter
             sb.AppendLine();
 
             // ----------------------------------------------------
+            // TRANSPARENCY
+            // ----------------------------------------------------
+            bool hasTransparency = data.Output.EnableTransparency && this.TransparentIndex >= 0 && this.TransparentIndex < Palette.Length;
+            if (hasTransparency)
+            {
+                sb.AppendLine($"#define {macroName}_TRANSPARENT_INDEX   {this.TransparentIndex}");
+                sb.AppendLine();
+            }
+
+            // ----------------------------------------------------
             // GET PIXEL
             // ----------------------------------------------------
 
@@ -152,7 +167,8 @@ public static class ArduinoImageConverter
                     sb,
                     identifier,
                     macroName,
-                    data.Output.UseColor565);
+                    data.Output.UseColor565,
+                    hasTransparency);
             }
 
             return sb.ToString();
@@ -160,14 +176,17 @@ public static class ArduinoImageConverter
 
         public Bitmap ToBitmap()
         {
+            // Use 32bpp to support alpha when transparency is enabled
             var bitmap = new Bitmap(
                 Width,
                 Height,
-                PixelFormat.Format24bppRgb);
+                PixelFormat.Format32bppArgb);
 
             int bitsPerPixel = BitsPerPixel;
             int pixelsPerByte = 8 / bitsPerPixel;
             int mask = (1 << bitsPerPixel) - 1;
+
+            bool hasTransparency = TransparentIndex >= 0;
 
             for (int i = 0; i < Width * Height; i++)
             {
@@ -185,7 +204,15 @@ public static class ArduinoImageConverter
                 int x = i % Width;
                 int y = i / Width;
 
-                bitmap.SetPixel(x, y, color);
+                if (hasTransparency && paletteIndex == TransparentIndex)
+                {
+                    // Transparent pixel
+                    bitmap.SetPixel(x, y, Color.FromArgb(0, color.R, color.G, color.B));
+                }
+                else
+                {
+                    bitmap.SetPixel(x, y, color);
+                }
             }
 
             return bitmap;
@@ -250,7 +277,8 @@ public static class ArduinoImageConverter
             data.Input.Resize.Height,
             data.Output.Palette,
             packedData,
-            palette);
+            palette,
+            data.Output.EnableTransparency ? data.Output.TransparentIndex : -1);
     }
 
 
@@ -832,7 +860,8 @@ public static class ArduinoImageConverter
         StringBuilder sb,
         string identifier,
         string macroName,
-        bool useColor565)
+        bool useColor565,
+        bool hasTransparency)
     {
         sb.AppendLine(
             $"static inline uint16_t {identifier}GetPixel(");
@@ -925,6 +954,18 @@ public static class ArduinoImageConverter
             $"    #endif");
 
         sb.AppendLine();
+
+        // --------------------------------------------------------
+        // TRANSPARENCY CHECK
+        // --------------------------------------------------------
+        if (hasTransparency)
+        {
+            sb.AppendLine(
+                $"    if (paletteIndex == {macroName}_TRANSPARENT_INDEX)");
+            sb.AppendLine(
+                "        return 0xFFFF;");
+            sb.AppendLine();
+        }
 
         // --------------------------------------------------------
         // RGB565 PALETTE

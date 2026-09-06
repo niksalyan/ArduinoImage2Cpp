@@ -40,7 +40,6 @@ namespace Image2Cpp.Models
     public class DataRenderBoxOptionsModel
     {
         public bool FastBox { get; set; } = false;
-        public uint StartFrom { get; set; } = 0;
         public override string ToString()
         {
             return "";
@@ -65,6 +64,12 @@ namespace Image2Cpp.Models
         public bool UseColor565 { get; set; } = true;
 
         public bool IncludeRenderFunction { get; set; } = true;
+
+        [Description("Enable transparency preview and output")]
+        public bool EnableTransparency { get; set; } = false;
+
+        [Description("Transparent color palette index. Set to -1 for no transparency")]
+        public int TransparentIndex { get; set; } = -1;
         
 
         

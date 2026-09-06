@@ -66,6 +66,9 @@ public static class ArduinoImageBoxConverter
 
         public Color[] Palette { get; }
 
+        // Transparent palette index (-1 = none)
+        public int TransparentIndex { get; }
+
         public int BoxCount => Boxes.Length;
 
         public int ColorsCount => Palette.Length;
@@ -75,38 +78,41 @@ public static class ArduinoImageBoxConverter
             int height,
             ArduinoImageConverter.ColorDepth colorDepth,
             ImageBox[] boxes,
-            Color[] palette)
+            Color[] palette,
+            int transparentIndex = -1)
         {
             Width = width;
             Height = height;
             ColorDepth = colorDepth;
             Boxes = boxes;
             Palette = palette;
+            TransparentIndex = transparentIndex;
         }
 
         public Bitmap ToBitmap()
         {
+            // Use 32bpp to support alpha when transparency is enabled
             var bitmap = new Bitmap(
                 Width,
                 Height,
-                PixelFormat.Format24bppRgb);
+                PixelFormat.Format32bppArgb);
 
             using Graphics g = Graphics.FromImage(bitmap);
 
-            // Start with black in case the box data
-            // doesn't completely cover the image.
-            g.Clear(Color.Black);
+            // Start fully transparent
+            g.Clear(Color.Transparent);
 
             foreach (ImageBox box in Boxes)
             {
                 if (box.ColorIndex >= Palette.Length)
                     continue;
 
-                Color color =
-                    Palette[box.ColorIndex];
+                if (TransparentIndex >= 0 && box.ColorIndex == TransparentIndex)
+                    continue; // skip transparent boxes
 
-                using var brush =
-                    new SolidBrush(color);
+                Color color = Palette[box.ColorIndex];
+
+                using var brush = new SolidBrush(color);
 
                 g.FillRectangle(
                     brush,
@@ -260,6 +266,16 @@ public static class ArduinoImageBoxConverter
             sb.AppendLine();
 
             // ----------------------------------------------------
+            // TRANSPARENCY
+            // ----------------------------------------------------
+            bool hasTransparency = data.Output.EnableTransparency && this.TransparentIndex >= 0 && this.TransparentIndex < Palette.Length;
+            if (hasTransparency)
+            {
+                sb.AppendLine($"#define {macroName}_TRANSPARENT_INDEX   {this.TransparentIndex}");
+                sb.AppendLine();
+            }
+
+            // ----------------------------------------------------
             // DRAW IMAGE
             // ----------------------------------------------------
             if (data.Output.IncludeRenderFunction)
@@ -270,7 +286,7 @@ public static class ArduinoImageBoxConverter
                 macroName,
                 data.Output.UseColor565,
                 data.RenderBoxOptions.FastBox,
-                data.RenderBoxOptions.StartFrom);
+                hasTransparency);
             }
             
 
@@ -311,14 +327,16 @@ public static class ArduinoImageBoxConverter
             BuildBoxes(
                 indexes,
                 image.Width,
-                image.Height);
+                image.Height,
+                image.TransparentIndex);
 
         return new BoxImage(
             image.Width,
             image.Height,
             image.ColorDepth,
             boxes.ToArray(),
-            image.Palette);
+            image.Palette,
+            image.TransparentIndex);
     }
 
 
@@ -352,7 +370,8 @@ public static class ArduinoImageBoxConverter
     private static List<ImageBox> BuildBoxes(
         byte[] pixels,
         int width,
-        int height)
+        int height,
+        int transparentIndex = -1)
     {
         var boxes =
             new List<ImageBox>();
@@ -367,13 +386,11 @@ public static class ArduinoImageBoxConverter
         // COUNT COLORS
         // ========================================================
 
-        int[] colorCounts =
-            new int[256];
+        int[] colorCounts = new int[256];
 
-        for (int i = 0;
-             i < pixelCount;
-             i++)
+        for (int i = 0; i < pixelCount; i++)
         {
+            // skip transparent pixels from color counting
             colorCounts[pixels[i]]++;
         }
 
@@ -422,23 +439,20 @@ public static class ArduinoImageBoxConverter
 
         // ========================================================
         // LAYER 0
-        //
-        // DOMINANT COLOR ALWAYS FILLS
-        // THE ENTIRE IMAGE.
-        //
-        // This box is deliberately unconditional.
-        // ========================================================
+        // If transparency is not used, the dominant color fills the entire image.
+        if (transparentIndex < 0)
+        {
+            boxes.Add(
+                new ImageBox(
+                    0,
+                    0,
+                    width,
+                    height,
+                    colors[0]));
 
-        boxes.Add(
-            new ImageBox(
-                0,
-                0,
-                width,
-                height,
-                colors[0]));
-
-        if (colors.Length == 1)
-            return boxes;
+            if (colors.Length == 1)
+                return boxes;
+        }
 
         // ========================================================
         // USED
@@ -461,7 +475,9 @@ public static class ArduinoImageBoxConverter
         // PROCESS LAYERS
         // ========================================================
 
-        for (int layer = 1;
+        int startLayer = transparentIndex < 0 ? 1 : 0;
+
+        for (int layer = startLayer;
              layer < colors.Length;
              layer++)
         {
@@ -697,7 +713,7 @@ public static class ArduinoImageBoxConverter
         string macroName,
         bool useColor565,
         bool fastApi,
-        uint startFrom)
+        bool hasTransparency)
     {
         sb.AppendLine(
             $"static inline void {identifier}DrawImage(");
@@ -717,7 +733,7 @@ public static class ArduinoImageBoxConverter
         sb.AppendLine("{");
 
         sb.AppendLine(
-            $"    for (uint16_t i = {startFrom}; " +
+            $"    for (uint16_t i = 0; " +
             $"i < {macroName}_BOX_COUNT; i++)");
 
         sb.AppendLine("    {");
@@ -727,6 +743,8 @@ public static class ArduinoImageBoxConverter
 
         sb.AppendLine();
 
+        
+
         sb.AppendLine(
             $"        memcpy_P(" +
             $"&box, " +
@@ -734,6 +752,16 @@ public static class ArduinoImageBoxConverter
             $"sizeof(box));");
 
         sb.AppendLine();
+
+        // -------------------------------------------------------
+        // TRANSPARENCY: skip boxes that match the transparent index
+        // -------------------------------------------------------
+        if (hasTransparency)
+        {
+            sb.AppendLine($"        if (box.color == {macroName}_TRANSPARENT_INDEX)");
+            sb.AppendLine("            continue;");
+            sb.AppendLine();
+        }
 
         // ========================================================
         // COLOR
