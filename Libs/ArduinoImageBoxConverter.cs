@@ -290,7 +290,7 @@ public static class ArduinoImageBoxConverter
             // ----------------------------------------------------
             // TRANSPARENCY
             // ----------------------------------------------------
-            bool hasTransparency = data.Output.EnableTransparency && this.TransparentIndex >= 0 && this.TransparentIndex < Palette.Length;
+            bool hasTransparency = TransparentIndex >= 0 && this.TransparentIndex < Palette.Length;
             if (hasTransparency)
             {
                 sb.AppendLine($"#define {macroName}_TRANSPARENT_INDEX   {this.TransparentIndex}");
@@ -307,7 +307,7 @@ public static class ArduinoImageBoxConverter
                 identifier,
                 macroName,
                 data.Output.UseColor565,
-                data.RenderBoxOptions.FastBox,
+                data.Output.FastBox,
                 hasTransparency);
             }
             

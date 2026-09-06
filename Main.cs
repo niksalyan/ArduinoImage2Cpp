@@ -85,12 +85,12 @@ namespace Image2Cpp
                     {
                         case RenderType.ArduinoPixel:
                             var r = indexed;
-                            pictureBox1.Image = r.ToBitmap();
+                            pictureBox1.Image = r.ToBitmap(true);
                             textBox1.Text = r.ToArduinoCode(dataInputModel);
                             break;
                         case RenderType.ArduinoImageBox:
                             var rb = ArduinoImageBoxConverter.Convert(indexed);
-                            pictureBox1.Image = rb.ToBitmap(preview: true);
+                            pictureBox1.Image = rb.ToBitmap(true);
                             textBox1.Text = rb.ToArduinoCode(dataInputModel);
                             break;
                         default:

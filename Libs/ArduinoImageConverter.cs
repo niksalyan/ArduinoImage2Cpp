@@ -147,7 +147,7 @@ public static class ArduinoImageConverter
             // ----------------------------------------------------
             // TRANSPARENCY
             // ----------------------------------------------------
-            bool hasTransparency = data.Output.EnableTransparency && this.TransparentIndex >= 0 && this.TransparentIndex < Palette.Length;
+            bool hasTransparency = TransparentIndex >= 0 && this.TransparentIndex < Palette.Length;
             if (hasTransparency)
             {
                 sb.AppendLine($"#define {macroName}_TRANSPARENT_INDEX   {this.TransparentIndex}");
@@ -173,11 +173,13 @@ public static class ArduinoImageConverter
 
         public Bitmap ToBitmap()
         {
-            // Use 32bpp to support alpha when transparency is enabled
-            var bitmap = new Bitmap(
-                Width,
-                Height,
-                PixelFormat.Format32bppArgb);
+            return ToBitmap(preview: false);
+        }
+
+        public Bitmap ToBitmap(bool preview = false)
+        {
+            // Create foreground image as 32bpp to preserve alpha for transparent pixels
+            var fg = new Bitmap(Width, Height, PixelFormat.Format32bppArgb);
 
             int bitsPerPixel = BitsPerPixel;
             int pixelsPerByte = 8 / bitsPerPixel;
@@ -190,11 +192,9 @@ public static class ArduinoImageConverter
                 int byteIndex = i / pixelsPerByte;
                 int position = i % pixelsPerByte;
 
-                int shift =
-                    8 - bitsPerPixel * (position + 1);
+                int shift = 8 - bitsPerPixel * (position + 1);
 
-                int paletteIndex =
-                    (Data[byteIndex] >> shift) & mask;
+                int paletteIndex = (Data[byteIndex] >> shift) & mask;
 
                 Color color = Palette[paletteIndex];
 
@@ -204,15 +204,46 @@ public static class ArduinoImageConverter
                 if (hasTransparency && paletteIndex == TransparentIndex)
                 {
                     // Transparent pixel
-                    bitmap.SetPixel(x, y, Color.FromArgb(0, color.R, color.G, color.B));
+                    fg.SetPixel(x, y, Color.FromArgb(0, color.R, color.G, color.B));
                 }
                 else
                 {
-                    bitmap.SetPixel(x, y, color);
+                    fg.SetPixel(x, y, color);
                 }
             }
 
-            return bitmap;
+            if (!preview)
+            {
+                return fg;
+            }
+
+            // Preview: composite onto checkerboard background and return 24bpp image
+            var previewBmp = new Bitmap(Width, Height, PixelFormat.Format24bppRgb);
+
+            using (Graphics g = Graphics.FromImage(previewBmp))
+            {
+                int cell = 8;
+                Color c1 = Color.FromArgb(220, 220, 220);
+                Color c2 = Color.FromArgb(180, 180, 180);
+
+                for (int y = 0; y < previewBmp.Height; y += cell)
+                {
+                    for (int x = 0; x < previewBmp.Width; x += cell)
+                    {
+                        bool odd = ((x / cell) + (y / cell)) % 2 == 1;
+                        using (Brush b = new SolidBrush(odd ? c1 : c2))
+                        {
+                            g.FillRectangle(b, x, y, cell, cell);
+                        }
+                    }
+                }
+
+                g.DrawImage(fg, 0, 0, Width, Height);
+            }
+
+            fg.Dispose();
+
+            return previewBmp;
         }
 
     }
@@ -275,7 +306,7 @@ public static class ArduinoImageConverter
             data.Output.Palette,
             packedData,
             palette,
-            data.Output.EnableTransparency ? data.Output.TransparentIndex : -1);
+            data.Output.TransparentIndex);
     }
 
 

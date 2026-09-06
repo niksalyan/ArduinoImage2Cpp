@@ -21,8 +21,6 @@ namespace Image2Cpp.Models
         public DataInputModel Input { get; set; } = new DataInputModel();
         [Category("Options")]
         public DataOutputModel Output { get; set; } = new DataOutputModel();
-        [Category("Options")]
-        public DataRenderBoxOptionsModel RenderBoxOptions { get; set; } = new DataRenderBoxOptionsModel();
 
     }
 
@@ -52,16 +50,6 @@ namespace Image2Cpp.Models
         }
     }
 
-    [TypeConverter(typeof(ExpandableObjectConverter))]
-    public class DataRenderBoxOptionsModel
-    {
-        public bool FastBox { get; set; } = false;
-        public override string ToString()
-        {
-            return "";
-        }
-
-    }
 
     [TypeConverter(typeof(ExpandableObjectConverter))]
     public class DataOutputModel
@@ -80,16 +68,15 @@ namespace Image2Cpp.Models
 
         public bool IncludeRenderFunction { get; set; } = true;
 
-        [Description("Enable transparency preview and output")]
-        public bool EnableTransparency { get; set; } = false;
+        
 
         [Description("Transparent color palette index. Set to -1 for no transparency")]
         public int TransparentIndex { get; set; } = -1;
-        
 
-        
 
-        
+        public bool FastBox { get; set; } = false;
+
+
 
         public override string ToString()
         {
