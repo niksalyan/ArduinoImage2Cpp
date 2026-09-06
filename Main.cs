@@ -4,11 +4,12 @@ namespace Image2Cpp
 {
     public partial class Main : Form
     {
-        private DataInputModel dataInputModel = new DataInputModel();
+        private DataModel dataInputModel = new DataModel();
         public Main()
         {
             InitializeComponent();
             propertyGrid1.SelectedObject = dataInputModel;
+            propertyGrid1.ExpandAllGridItems();
         }
 
         private void propertyGrid1_PropertyValueChanged(object s, PropertyValueChangedEventArgs e)
@@ -16,28 +17,29 @@ namespace Image2Cpp
             try
             {
                 
-                if (dataInputModel.Image != null)
+                if (dataInputModel.Input.Image != null)
                 {
-                    var r = ArduinoImageConverter.Convert(dataInputModel);
+                    var indexed = ArduinoImageConverter.Convert(dataInputModel);
                     
-                    if (dataInputModel.ImageBox)
+                    switch(dataInputModel.Output.RenderType)
                     {
-                        var rb = ArduinoImageBoxConverter.Convert(r, dataInputModel.MaxArraySize);
-                        pictureBox1.Image = rb.ToBitmap();
-                        textBox1.Text = rb.ToArduinoCode(
-                            dataInputModel.Name ?? "IMAGE",
-                            dataInputModel.UseColor565,
-                            dataInputModel.IncludeRenderFunction
-                            );
-                    } else
-                    {
-                        pictureBox1.Image = r.ToBitmap();
-                        textBox1.Text = r.ToArduinoCode(
-                            dataInputModel.Name ?? "IMAGE",
-                            dataInputModel.UseColor565,
-                            dataInputModel.IncludeRenderFunction
-                            );
+                        case RenderType.ArduinoPixel:
+                            var r = indexed;
+                            pictureBox1.Image = r.ToBitmap();
+                            textBox1.Text = r.ToArduinoCode(dataInputModel);
+                            break;
+                        case RenderType.ArduinoImageBox:
+                            var rb = ArduinoImageBoxConverter.Convert(indexed);
+                            pictureBox1.Image = rb.ToBitmap();
+                            textBox1.Text = rb.ToArduinoCode(dataInputModel);
+                            break;
+                        default:
+                            pictureBox1.Image = null;
+                            textBox1.Text = "Render method not supported";
+                            break;
                     }
+
+                    
                     
                 }
                 else

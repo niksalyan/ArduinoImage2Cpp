@@ -61,15 +61,12 @@ public static class ArduinoImageConverter
         // ARDUINO CODE GENERATION
         // ========================================================
 
-        public string ToArduinoCode(
-            string name,
-            bool useColor565 = false,
-            bool includeGetPixel = true)
+        public string ToArduinoCode(DataModel data)
         {
-            if (string.IsNullOrWhiteSpace(name))
-                throw new ArgumentException("Name cannot be empty.", nameof(name));
+            if (string.IsNullOrWhiteSpace(data.Output.Name))
+                throw new ArgumentException("Name cannot be empty.", nameof(data.Output.Name));
 
-            string identifier = MakeIdentifier(name);
+            string identifier = MakeIdentifier(data.Output.Name);
             string macroName = identifier.ToUpperInvariant();
 
             var sb = new StringBuilder();
@@ -105,7 +102,7 @@ public static class ArduinoImageConverter
             // PALETTE
             // ----------------------------------------------------
 
-            if (useColor565)
+            if (data.Output.UseColor565)
             {
                 sb.AppendLine(
                     $"const uint16_t {identifier}Palette[{ColorsCount}] PROGMEM =");
@@ -149,13 +146,13 @@ public static class ArduinoImageConverter
             // GET PIXEL
             // ----------------------------------------------------
 
-            if (includeGetPixel)
+            if (data.Output.IncludeRenderFunction)
             {
                 AppendGetPixelFunction(
                     sb,
                     identifier,
                     macroName,
-                    useColor565);
+                    data.Output.UseColor565);
             }
 
             return sb.ToString();
@@ -194,24 +191,6 @@ public static class ArduinoImageConverter
             return bitmap;
         }
 
-
-        // ========================================================
-        // SAVE HEADER
-        // ========================================================
-
-        public void SaveArduinoHeader(
-            string filename,
-            string name,
-            bool useColor565 = false,
-            bool includeGetPixel = true)
-        {
-            System.IO.File.WriteAllText(
-                filename,
-                ToArduinoCode(
-                    name,
-                    useColor565,
-                    includeGetPixel));
-        }
     }
 
 
@@ -219,44 +198,38 @@ public static class ArduinoImageConverter
     // PUBLIC CONVERSION FUNCTION
     // ============================================================
 
-    public static IndexedImage Convert(DataInputModel data)
+    public static IndexedImage Convert(DataModel data)
     {
         if (data == null)
             throw new ArgumentNullException(nameof(data));
-        if (data.Image == null)
-            throw new ArgumentNullException(nameof(data.Image));
+        if (data.Input.Image == null)
+            throw new ArgumentNullException(nameof(data.Input.Image));
 
-        if (data.Width <= 0)
-            throw new ArgumentOutOfRangeException(nameof(data.Width));
+        if (data.Input.Resize.Width <= 0)
+            throw new ArgumentOutOfRangeException(nameof(data.Input.Resize.Width));
 
 
-        if (data.Height <= 0)
-            throw new ArgumentOutOfRangeException(nameof(data.Height));
+        if (data.Input.Resize.Height <= 0)
+            throw new ArgumentOutOfRangeException(nameof(data.Input.Resize.Height));
 
-        int colorsCount = GetColorsCount(data.Colors);
+        int colorsCount = GetColorsCount(data.Output.Palette);
 
-        using Bitmap resized = Resize(
-            data.Image,
-            data.Width,
-            data.Height,
-            data.BicubicResizing,
-            data.Brightness,
-            data.Contrast);
+        using Bitmap resized = GetImage(data.Input);    
 
         Color[] pixels = GetPixels(resized);
 
         Color[] palette = BuildPalette(
             pixels,
-            colorsCount);
+            (int)Math.Min(colorsCount, data.Input.MaxColors));
 
         byte[] indexes;
 
-        if (data.Dithering)
+        if (data.Input.Dithering)
         {
             indexes = Dither(
                 pixels,
-                data.Width,
-                data.Height,
+                data.Input.Resize.Width,
+                data.Input.Resize.Height,
                 palette);
         }
         else
@@ -268,14 +241,14 @@ public static class ArduinoImageConverter
 
         byte[] packedData = PackIndexes(
             indexes,
-            data.Width,
-            data.Height,
-            data.Colors);
+            data.Input.Resize.Width,
+            data.Input.Resize.Height,
+            data.Output.Palette);
 
         return new IndexedImage(
-            data.Width,
-            data.Height,
-            data.Colors,
+            data.Input.Resize.Width,
+            data.Input.Resize.Height,
+            data.Output.Palette,
             packedData,
             palette);
     }
@@ -303,23 +276,16 @@ public static class ArduinoImageConverter
     // RESIZE
     // ============================================================
 
-    private static Bitmap Resize(
-        Bitmap source,
-        int width,
-        int height,
-        bool bicubic,
-        int brightness,
-        int contrast
-        )
+    private static Bitmap GetImage(DataInputModel input)
     {
         Bitmap result = new Bitmap(
-            width,
-            height,
+            input.Resize.Width,
+            input.Resize.Height,
             PixelFormat.Format24bppRgb);
 
         using Graphics g = Graphics.FromImage(result);
 
-        if (bicubic)
+        if (input.Bicubic)
         {
             g.InterpolationMode = InterpolationMode.Bicubic;
             g.PixelOffsetMode = PixelOffsetMode.HighQuality;
@@ -335,10 +301,10 @@ public static class ArduinoImageConverter
         
 
         g.DrawImage(
-            source,
-            new Rectangle(0, 0, width, height));
+            input.Image,
+            new Rectangle(0, 0, input.Resize.Width, input.Resize.Height));
 
-        result.ApplyEffect(new BrightnessContrastEffect(brightness, contrast));
+        result.ApplyEffect(new BrightnessContrastEffect(input.Brightness, input.Contrast));
 
         return result;
     }

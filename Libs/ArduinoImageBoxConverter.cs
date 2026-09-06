@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Image2Cpp.Models;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
@@ -122,19 +123,15 @@ public static class ArduinoImageBoxConverter
         // ARDUINO CODE
         // ========================================================
 
-        public string ToArduinoCode(
-            string name,
-            bool useColor565 = false,
-            bool includeRenderFunction = false
-            )
+        public string ToArduinoCode(DataModel data)
         {
-            if (string.IsNullOrWhiteSpace(name))
+            if (string.IsNullOrWhiteSpace(data.Output.Name))
                 throw new ArgumentException(
                     "Name cannot be empty.",
-                    nameof(name));
+                    nameof(data.Output.Name));
 
             string identifier =
-                MakeIdentifier(name);
+                MakeIdentifier(data.Output.Name);
 
             string macroName =
                 identifier.ToUpperInvariant();
@@ -216,7 +213,7 @@ public static class ArduinoImageBoxConverter
             // PALETTE
             // ----------------------------------------------------
 
-            if (useColor565)
+            if (data.Output.UseColor565)
             {
                 sb.AppendLine(
                     $"const uint16_t {identifier}Palette" +
@@ -265,35 +262,21 @@ public static class ArduinoImageBoxConverter
             // ----------------------------------------------------
             // DRAW IMAGE
             // ----------------------------------------------------
-            if (includeRenderFunction)
+            if (data.Output.IncludeRenderFunction)
             {
                 AppendDrawImageFunction(
                 sb,
                 identifier,
                 macroName,
-                useColor565);
+                data.Output.UseColor565,
+                data.RenderBoxOptions.FastBox,
+                data.RenderBoxOptions.StartFrom);
             }
             
 
             return sb.ToString();
         }
 
-
-        // ========================================================
-        // SAVE HEADER
-        // ========================================================
-
-        public void SaveArduinoHeader(
-            string filename,
-            string name,
-            bool useColor565 = false)
-        {
-            System.IO.File.WriteAllText(
-                filename,
-                ToArduinoCode(
-                    name,
-                    useColor565));
-        }
     }
 
 
@@ -302,7 +285,7 @@ public static class ArduinoImageBoxConverter
     // ============================================================
 
     public static BoxImage Convert(
-        ArduinoImageConverter.IndexedImage image, uint maxSize = 0)
+        ArduinoImageConverter.IndexedImage image)
     {
         if (image == null)
             throw new ArgumentNullException(nameof(image));
@@ -329,11 +312,6 @@ public static class ArduinoImageBoxConverter
                 indexes,
                 image.Width,
                 image.Height);
-
-        if (maxSize > 0)
-        {
-            boxes = boxes.Take((int)maxSize).ToList();
-        }
 
         return new BoxImage(
             image.Width,
@@ -717,7 +695,9 @@ public static class ArduinoImageBoxConverter
         StringBuilder sb,
         string identifier,
         string macroName,
-        bool useColor565)
+        bool useColor565,
+        bool fastApi,
+        uint startFrom)
     {
         sb.AppendLine(
             $"static inline void {identifier}DrawImage(");
@@ -737,7 +717,7 @@ public static class ArduinoImageBoxConverter
         sb.AppendLine("{");
 
         sb.AppendLine(
-            $"    for (uint16_t i = 0; " +
+            $"    for (uint16_t i = {startFrom}; " +
             $"i < {macroName}_BOX_COUNT; i++)");
 
         sb.AppendLine("    {");
@@ -802,7 +782,7 @@ public static class ArduinoImageBoxConverter
         // ========================================================
 
         sb.AppendLine(
-            "        tft.fillRect(");
+            fastApi ?"        tft.fastFillRect(" : "        tft.fillRect(");
 
         sb.AppendLine(
             "            offsetX + box.x * scaleX,");
