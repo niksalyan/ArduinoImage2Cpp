@@ -1,17 +1,27 @@
 ﻿
 
 using System.ComponentModel;
+using System.Drawing;
+using System.Windows.Forms;
+using System.Text.Json.Serialization;
 
 namespace Image2Cpp.Models
 {
     public class DataModel
     {
 
-        [Category("Image2CPP")]
+        [Category("Input")]
+        [JsonIgnore]
+        public Bitmap Image { get; set; } = null;
+
+        [Category("Input"), Description("Render type for the output image")]
+        public RenderType RenderMethod { get; set; } = RenderType.ArduinoPixel;
+
+        [Category("Options")]
         public DataInputModel Input { get; set; } = new DataInputModel();
-        [Category("Image2CPP")]
+        [Category("Options")]
         public DataOutputModel Output { get; set; } = new DataOutputModel();
-        [Category("Image2CPP")]
+        [Category("Options")]
         public DataRenderBoxOptionsModel RenderBoxOptions { get; set; } = new DataRenderBoxOptionsModel();
 
     }
@@ -19,7 +29,7 @@ namespace Image2Cpp.Models
     [TypeConverter(typeof(ExpandableObjectConverter))]
     public class DataInputModel
     {
-        public Bitmap Image { get; set; } = null;
+        
         public Size Resize { get; set; } = new Size(240, 160);
 
         public bool Bicubic { get; set; } = false;
@@ -29,6 +39,12 @@ namespace Image2Cpp.Models
         public int Contrast { get; set; } = 0;
 
         public uint MaxColors { get; set; } = 32;
+
+        [Description("Crop rectangle applied before resizing. Crop is enabled when Width and Height > 0.")]
+        public Padding Crop { get; set; } = new Padding();
+
+
+        // CropEnabled property removed: check Crop rectangle values directly when needed.
 
         public override string ToString()
         {
@@ -57,8 +73,7 @@ namespace Image2Cpp.Models
         [Description("Color depth for the output image")]
         public ArduinoImageConverter.ColorDepth Palette { get; set; } = ArduinoImageConverter.ColorDepth.Bpp4;
 
-        [Description("Render type for the output image")]
-        public RenderType RenderType { get; set; } = RenderType.ArduinoPixel;
+        
 
         [Description("Use 565 color format")]
         public bool UseColor565 { get; set; } = true;

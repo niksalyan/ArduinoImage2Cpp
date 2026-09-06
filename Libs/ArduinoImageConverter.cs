@@ -81,9 +81,6 @@ public static class ArduinoImageConverter
             sb.AppendLine("// ============================================================");
             sb.AppendLine();
 
-            sb.AppendLine("#include <Arduino.h>");
-            sb.AppendLine();
-
             sb.AppendLine($"#define {macroName}_WIDTH       {Width}");
             sb.AppendLine($"#define {macroName}_HEIGHT      {Height}");
             sb.AppendLine($"#define {macroName}_BPP         {BitsPerPixel}");
@@ -229,8 +226,8 @@ public static class ArduinoImageConverter
     {
         if (data == null)
             throw new ArgumentNullException(nameof(data));
-        if (data.Input.Image == null)
-            throw new ArgumentNullException(nameof(data.Input.Image));
+        if (data.Image == null)
+            throw new ArgumentNullException(nameof(data.Image));
 
         if (data.Input.Resize.Width <= 0)
             throw new ArgumentOutOfRangeException(nameof(data.Input.Resize.Width));
@@ -241,7 +238,7 @@ public static class ArduinoImageConverter
 
         int colorsCount = GetColorsCount(data.Output.Palette);
 
-        using Bitmap resized = GetImage(data.Input);    
+        using Bitmap resized = GetImage(data);    
 
         Color[] pixels = GetPixels(resized);
 
@@ -304,16 +301,16 @@ public static class ArduinoImageConverter
     // RESIZE
     // ============================================================
 
-    private static Bitmap GetImage(DataInputModel input)
+    private static Bitmap GetImage(DataModel input)
     {
         Bitmap result = new Bitmap(
-            input.Resize.Width,
-            input.Resize.Height,
+            input.Input.Resize.Width,
+            input.Input.Resize.Height,
             PixelFormat.Format24bppRgb);
 
         using Graphics g = Graphics.FromImage(result);
 
-        if (input.Bicubic)
+        if (input.Input.Bicubic)
         {
             g.InterpolationMode = InterpolationMode.Bicubic;
             g.PixelOffsetMode = PixelOffsetMode.HighQuality;
@@ -327,12 +324,45 @@ public static class ArduinoImageConverter
             g.CompositingQuality = CompositingQuality.AssumeLinear;
         }
         
+        var p = input.Input.Crop; // Padding
+        bool cropEnabled = (p.Left + p.Top + p.Right + p.Bottom) > 0;
+        if (cropEnabled)
+        {
+            // compute source rect from padding
+            int srcX = p.Left;
+            int srcY = p.Top;
+            int srcW = input.Image.Width - p.Left - p.Right;
+            int srcH = input.Image.Height - p.Top - p.Bottom;
 
-        g.DrawImage(
-            input.Image,
-            new Rectangle(0, 0, input.Resize.Width, input.Resize.Height));
+            if (srcX < 0) srcX = 0;
+            if (srcY < 0) srcY = 0;
+            if (srcW < 0) srcW = 0;
+            if (srcH < 0) srcH = 0;
 
-        result.ApplyEffect(new BrightnessContrastEffect(input.Brightness, input.Contrast));
+            if (srcW > 0 && srcH > 0 && srcX < input.Image.Width && srcY < input.Image.Height)
+            {
+                var srcRect = new Rectangle(srcX, srcY, srcW, srcH);
+
+                g.DrawImage(
+                    input.Image,
+                    new Rectangle(0, 0, input.Input.Resize.Width, input.Input.Resize.Height),
+                    srcRect,
+                    GraphicsUnit.Pixel);
+            }
+            else
+            {
+                // nothing to draw when padding excludes entire image
+            }
+        }
+        else
+        {
+            g.DrawImage(
+                input.Image,
+                new Rectangle(0, 0, input.Input.Resize.Width, input.Input.Resize.Height));
+        }
+        
+
+        result.ApplyEffect(new BrightnessContrastEffect(input.Input.Brightness, input.Input.Contrast));
 
         return result;
     }
