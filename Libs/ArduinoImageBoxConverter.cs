@@ -352,7 +352,7 @@ public static class ArduinoImageBoxConverter
                 image.Height,
                 image.TransparentIndex);
 
-        boxes = boxes.Where(b => b.Width + b.Height >= data.Output.DetailLevel).ToList();
+        boxes = boxes.Where(b => b.Width * b.Height >= data.Output.DetailLevel).ToList();
 
         return new BoxImage(
             image.Width,
@@ -392,36 +392,49 @@ public static class ArduinoImageBoxConverter
     // ============================================================
 
     private static List<ImageBox> BuildBoxes(
-        byte[] pixels,
-        int width,
-        int height,
-        int transparentIndex = -1)
+    byte[] pixels,
+    int width,
+    int height,
+    int transparentIndex = -1)
     {
-        var boxes =
-            new List<ImageBox>();
+        var boxes = new List<ImageBox>();
 
-        int pixelCount =
-            width * height;
+        if (pixels == null ||
+            width <= 0 ||
+            height <= 0)
+            return boxes;
 
-        if (pixelCount == 0)
+        int pixelCount = width * height;
+
+        if (pixels.Length < pixelCount)
             return boxes;
 
         // ========================================================
         // COUNT COLORS
+        //
+        // Transparent pixels are not drawable.
         // ========================================================
 
         int[] colorCounts = new int[256];
 
         for (int i = 0; i < pixelCount; i++)
         {
-            // skip transparent pixels from color counting
-            colorCounts[pixels[i]]++;
+            byte color = pixels[i];
+
+            if (transparentIndex >= 0 &&
+                color == transparentIndex)
+                continue;
+
+            colorCounts[color]++;
         }
 
         // ========================================================
         // SORT COLORS
         //
-        // Most common -> least common
+        // Most common -> least common.
+        //
+        // This still gives us a useful background -> foreground
+        // relationship when deciding which pixels a box may cover.
         // ========================================================
 
         byte[] colors =
@@ -438,16 +451,11 @@ public static class ArduinoImageBoxConverter
         // ========================================================
         // COLOR -> LAYER
         //
-        // Example:
-        //
-        // color 5  -> layer 0
-        // color 12 -> layer 1
-        // color 2  -> layer 2
-        //
+        // Lower layer = background
+        // Higher layer = foreground
         // ========================================================
 
-        int[] colorLayer =
-            new int[256];
+        int[] colorLayer = new int[256];
 
         Array.Fill(
             colorLayer,
@@ -457,13 +465,37 @@ public static class ArduinoImageBoxConverter
              layer < colors.Length;
              layer++)
         {
-            colorLayer[colors[layer]] =
-                layer;
+            colorLayer[colors[layer]] = layer;
         }
 
         // ========================================================
-        // LAYER 0
-        // If transparency is not used, the dominant color fills the entire image.
+        // USED
+        //
+        // A pixel can only be consumed once by a particular layer.
+        // ========================================================
+
+        int[] used = new int[pixelCount];
+
+        int generation = 0;
+
+        // ========================================================
+        // GENERATE BOXES
+        //
+        // We process background -> foreground.
+        //
+        // Within each layer we always take the largest rectangle
+        // available at the current position.
+        //
+        // Later layers can overwrite earlier layers.
+        // ========================================================
+
+        int startLayer =
+            transparentIndex >= 0
+                ? 0
+                : 1;
+
+        // Without transparency, the most common color becomes
+        // the implicit full-screen background.
         if (transparentIndex < 0)
         {
             boxes.Add(
@@ -478,41 +510,19 @@ public static class ArduinoImageBoxConverter
                 return boxes;
         }
 
-        // ========================================================
-        // USED
-        //
-        // Prevents boxes from the SAME layer
-        // from overlapping each other.
-        //
-        // It does NOT protect earlier layers.
-        //
-        // Generation counter means we don't need to clear
-        // the array for every layer.
-        // ========================================================
-
-        int[] used =
-            new int[pixelCount];
-
-        int generation = 0;
-
-        // ========================================================
-        // PROCESS LAYERS
-        // ========================================================
-
-        int startLayer = transparentIndex < 0 ? 1 : 0;
-
         for (int layer = startLayer;
              layer < colors.Length;
              layer++)
         {
-            byte color =
-                colors[layer];
+            byte color = colors[layer];
 
             generation++;
 
             // ====================================================
-            // TOP -> BOTTOM
-            // LEFT -> RIGHT
+            // SCAN IMAGE
+            //
+            // Top -> bottom
+            // Left -> right
             // ====================================================
 
             for (int y = 0;
@@ -526,33 +536,16 @@ public static class ArduinoImageBoxConverter
                     int startIndex =
                         y * width + x;
 
-                    // ------------------------------------------------
-                    // Already covered by another box
-                    // from this layer.
-                    // ------------------------------------------------
-
+                    // Already consumed by this layer.
                     if (used[startIndex] == generation)
                         continue;
 
-                    // ------------------------------------------------
-                    // We only START a box on a pixel whose FINAL
-                    // color belongs to this layer.
-                    // ------------------------------------------------
-
+                    // We only start a box on this layer's color.
                     if (pixels[startIndex] != color)
                         continue;
 
                     // ====================================================
                     // FIND MAXIMUM WIDTH
-                    //
-                    // Current layer may cross:
-                    //
-                    //     current layer
-                    //     future layers
-                    //
-                    // But NOT:
-                    //
-                    //     earlier layers
                     // ====================================================
 
                     int maxWidth = 0;
@@ -562,12 +555,20 @@ public static class ArduinoImageBoxConverter
                         int index =
                             startIndex + maxWidth;
 
-                        // Already consumed by this layer.
+                        // Already consumed.
                         if (used[index] == generation)
                             break;
 
-                        // Earlier layer = protected.
-                        if (colorLayer[pixels[index]] < layer)
+                        byte pixelColor =
+                            pixels[index];
+
+                        // Transparency is an absolute boundary.
+                        if (transparentIndex >= 0 &&
+                            pixelColor == transparentIndex)
+                            break;
+
+                        // Earlier layer cannot be covered by this box.
+                        if (colorLayer[pixelColor] < layer)
                             break;
 
                         maxWidth++;
@@ -577,7 +578,9 @@ public static class ArduinoImageBoxConverter
                         continue;
 
                     // ====================================================
-                    // FIND BEST RECTANGLE
+                    // FIND LARGEST RECTANGLE
+                    //
+                    // Width can only shrink as we move down.
                     // ====================================================
 
                     int bestWidth = 1;
@@ -600,12 +603,19 @@ public static class ArduinoImageBoxConverter
                             int index =
                                 rowStart + rowWidth;
 
-                            // Already consumed by this layer.
                             if (used[index] == generation)
                                 break;
 
-                            // Earlier layer = protected.
-                            if (colorLayer[pixels[index]] < layer)
+                            byte pixelColor =
+                                pixels[index];
+
+                            // Transparency is a hard boundary.
+                            if (transparentIndex >= 0 &&
+                                pixelColor == transparentIndex)
+                                break;
+
+                            // Earlier layer is protected.
+                            if (colorLayer[pixelColor] < layer)
                                 break;
 
                             rowWidth++;
@@ -614,8 +624,6 @@ public static class ArduinoImageBoxConverter
                         if (rowWidth == 0)
                             break;
 
-                        // Rectangle width can only shrink
-                        // as we go downward.
                         currentWidth =
                             rowWidth;
 
@@ -636,7 +644,7 @@ public static class ArduinoImageBoxConverter
                     }
 
                     // ====================================================
-                    // CREATE BOX
+                    // ADD BOX
                     // ====================================================
 
                     boxes.Add(
@@ -648,15 +656,7 @@ public static class ArduinoImageBoxConverter
                             color));
 
                     // ====================================================
-                    // MARK BOX USED
-                    //
-                    // IMPORTANT:
-                    //
-                    // These pixels are only marked as used for
-                    // THIS layer.
-                    //
-                    // A later layer is still allowed to overwrite
-                    // them.
+                    // MARK USED
                     // ====================================================
 
                     for (int yy = y;
@@ -677,6 +677,20 @@ public static class ArduinoImageBoxConverter
                 }
             }
         }
+
+        // ========================================================
+        // IMPORTANT:
+        //
+        // DO NOT globally sort boxes by area here.
+        //
+        // The order generated above represents:
+        //
+        //     background -> foreground
+        //
+        // and later boxes are allowed to overwrite earlier ones.
+        //
+        // Sorting by area would break that relationship.
+        // ========================================================
 
         return boxes;
     }

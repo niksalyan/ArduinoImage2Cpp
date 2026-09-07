@@ -136,8 +136,24 @@ namespace Image2Cpp.Models
         [Description("Include helper rendering functions in the generated Arduino code.")]
         public bool IncludeRenderFunction { get; set; } = true;
 
-        [Description("Transparent color palette index. Set to -1 for no transparency.")]
-        public int TransparentIndex { get; set; } = -1;
+        // TransparentIndex removed. Transparency is now determined by TransparentColor (optionally taken from top-left).
+
+        [JsonIgnore]
+        [Description("Transparent color used to detect transparent pixels. Leave empty to disable.")]
+        public Color TransparentColor { get; set; } = Color.Empty;
+
+        [Description("Use the top-left pixel of the resized image as the transparent color.")]
+        public bool TransparentFromTopLeft { get; set; } = false;
+
+        [Browsable(false)]
+        public int TransparentColorArgb
+        {
+            get => TransparentColor.ToArgb();
+            set => TransparentColor = Color.FromArgb(value);
+        }
+
+        [Description("Tolerance for transparent color matching (Euclidean distance, 0 = exact match).")]
+        public int TransparentTolerance { get; set; } = 0;
 
         [Description("Optimize box rendering with the fast fillRect API when available.")]
         public bool FastBox { get; set; } = false;
