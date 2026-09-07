@@ -273,9 +273,18 @@ public static class ArduinoImageConverter
 
         Color[] pixels = GetPixels(resized);
 
-        Color[] palette = BuildPalette(
+        Color[] palette;
+        if (data.Palette.UseCustomPalette && data.Palette.Colors.Count >= 2)
+        {
+            palette = data.Palette.Colors.ToArray();
+        }
+        else
+        {
+            palette = BuildPalette(
             pixels,
             (int)Math.Min(colorsCount, data.Input.MaxColors));
+        }
+        
 
         byte[] indexes;
 
@@ -393,8 +402,7 @@ public static class ArduinoImageConverter
         }
         
 
-        result.ApplyEffect(new BrightnessContrastEffect(input.Input.Brightness, input.Input.Contrast));
-        result.ApplyEffect(new ColorBalanceEffect(input.Input.CyanRed, input.Input.MagentaGreen, input.Input.YellowBlue));
+        input.Filters.Apply(result);
 
         return result;
     }

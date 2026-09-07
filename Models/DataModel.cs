@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Drawing;
 using System.Windows.Forms;
 using System.Text.Json.Serialization;
+using System.Drawing.Imaging.Effects;
 
 namespace Image2Cpp.Models
 {
@@ -17,6 +18,11 @@ namespace Image2Cpp.Models
 
         [Category("Input"), Description("Render type for the output image")]
         public RenderType RenderMethod { get; set; } = RenderType.ArduinoPixel;
+
+        [Category("Options"), Description("Image processing filters applied after resizing and before palette conversion.")]
+        public DataFiltersModel Filters { get; set; } = new DataFiltersModel();
+
+        public DataPaletteModel Palette { get; set; } = new DataPaletteModel();
 
         [Category("Options")]
         [Description("Input processing options such as resize, crop and color reduction settings.")]
@@ -39,6 +45,44 @@ namespace Image2Cpp.Models
         [Description("Enable Floyd-Steinberg dithering when mapping to the palette.")]
         public bool Dithering { get; set; } = false;
 
+        
+
+        [Description("Maximum number of colors to include in the generated palette.")]
+        public uint MaxColors { get; set; } = 32;
+
+        [Description("Crop padding (pixels) applied before resizing. Values are Left/Top/Right/Bottom.")]
+        public Padding Crop { get; set; } = new Padding();
+
+
+        // CropEnabled property removed: check Crop rectangle values directly when needed.
+
+        public override string ToString()
+        {
+            return "";
+        }
+    }
+
+    [TypeConverter(typeof(ExpandableObjectConverter))]
+    public class DataPaletteModel
+    {
+
+        public bool UseCustomPalette { get; set; } = false;
+        public List<Color> Colors { get; set; } = new List<Color>() { 
+            Color.Black,
+            Color.Red,
+            Color.Green,
+            Color.Blue
+        };
+
+        public override string ToString()
+        {
+            return Colors.Count + " colors";
+        }
+    }
+
+    [TypeConverter(typeof(ExpandableObjectConverter))]
+    public class DataFiltersModel
+    {
         [Description("Brightness adjustment applied after resizing (-255..255).")]
         public int Brightness { get; set; } = 0;
 
@@ -49,14 +93,22 @@ namespace Image2Cpp.Models
         public int MagentaGreen { get; set; } = 0;
         public int YellowBlue { get; set; } = 0;
 
-        [Description("Maximum number of colors to include in the generated palette.")]
-        public uint MaxColors { get; set; } = 32;
+        public void Apply(Bitmap bitmap)
+        {
+            if (bitmap != null)
+            {
+                try
+                {
+                    bitmap.ApplyEffect(new BrightnessContrastEffect(Brightness, Contrast));
+                    if (CyanRed != 0 || MagentaGreen != 0 || YellowBlue != 0)
+                    {
+                        bitmap.ApplyEffect(new ColorBalanceEffect(CyanRed, MagentaGreen, YellowBlue));
+                    }
+                } catch { }
+            }
+        }
 
-        [Description("Crop padding (pixels) applied before resizing. Values are Left/Top/Right/Bottom.")]
-        public Padding Crop { get; set; } = new Padding();
 
-
-        // CropEnabled property removed: check Crop rectangle values directly when needed.
 
         public override string ToString()
         {
@@ -89,6 +141,8 @@ namespace Image2Cpp.Models
 
         [Description("Optimize box rendering with the fast fillRect API when available.")]
         public bool FastBox { get; set; } = false;
+
+        public uint DetailLevel { get; set; } = 1;
 
 
 

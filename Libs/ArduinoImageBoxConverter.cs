@@ -140,11 +140,11 @@ public static class ArduinoImageBoxConverter
                 using var brush = new SolidBrush(color);
 
                 g.FillRectangle(
-                    brush,
-                    box.X,
-                    box.Y,
-                    box.Width,
-                    box.Height);
+                        brush,
+                        box.X,
+                        box.Y,
+                        box.Width,
+                        box.Height);
             }
 
             return bitmap;
@@ -323,7 +323,7 @@ public static class ArduinoImageBoxConverter
     // ============================================================
 
     public static BoxImage Convert(
-        ArduinoImageConverter.IndexedImage image)
+        ArduinoImageConverter.IndexedImage image, DataModel data)
     {
         if (image == null)
             throw new ArgumentNullException(nameof(image));
@@ -351,6 +351,8 @@ public static class ArduinoImageBoxConverter
                 image.Width,
                 image.Height,
                 image.TransparentIndex);
+
+        boxes = boxes.Where(b => b.Width + b.Height >= data.Output.DetailLevel).ToList();
 
         return new BoxImage(
             image.Width,

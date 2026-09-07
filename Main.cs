@@ -89,7 +89,7 @@ namespace Image2Cpp
                             textBox1.Text = r.ToArduinoCode(dataInputModel);
                             break;
                         case RenderType.ArduinoImageBox:
-                            var rb = ArduinoImageBoxConverter.Convert(indexed);
+                            var rb = ArduinoImageBoxConverter.Convert(indexed, dataInputModel);
                             pictureBox1.Image = rb.ToBitmap(true);
                             textBox1.Text = rb.ToArduinoCode(dataInputModel);
                             break;
