@@ -28,6 +28,7 @@
         /// </summary>
         private void InitializeComponent()
         {
+            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(Main));
             propertyGrid1 = new PropertyGrid();
             pictureBox1 = new PictureBox();
             textBox1 = new TextBox();
@@ -74,6 +75,7 @@
             // 
             // textBox1
             // 
+            textBox1.BorderStyle = BorderStyle.None;
             textBox1.Dock = DockStyle.Fill;
             textBox1.Location = new Point(0, 0);
             textBox1.Multiline = true;
@@ -163,6 +165,7 @@
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(800, 450);
             Controls.Add(splitContainer1);
+            Icon = (Icon)resources.GetObject("$this.Icon");
             MainMenuStrip = menuStrip1;
             Name = "Main";
             Text = "Image2Cpp";

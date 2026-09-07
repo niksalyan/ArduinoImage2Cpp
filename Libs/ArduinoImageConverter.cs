@@ -394,6 +394,7 @@ public static class ArduinoImageConverter
         
 
         result.ApplyEffect(new BrightnessContrastEffect(input.Input.Brightness, input.Input.Contrast));
+        result.ApplyEffect(new ColorBalanceEffect(input.Input.CyanRed, input.Input.MagentaGreen, input.Input.YellowBlue));
 
         return result;
     }
