@@ -6,6 +6,7 @@ using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Drawing.Imaging.Effects;
 using System.Text;
+using System.Runtime.InteropServices;
 
 public static class ArduinoImageConverter
 {
@@ -178,72 +179,118 @@ public static class ArduinoImageConverter
 
         public Bitmap ToBitmap(bool preview = false)
         {
-            // Create foreground image as 32bpp to preserve alpha for transparent pixels
-            var fg = new Bitmap(Width, Height, PixelFormat.Format32bppArgb);
-
             int bitsPerPixel = BitsPerPixel;
             int pixelsPerByte = 8 / bitsPerPixel;
             int mask = (1 << bitsPerPixel) - 1;
 
             bool hasTransparency = TransparentIndex >= 0;
 
+            // Build foreground buffer as 32bpp ARGB (non-premultiplied) in memory
+            int fgStride = Width * 4;
+            byte[] fgBuffer = new byte[fgStride * Height];
+
             for (int i = 0; i < Width * Height; i++)
             {
                 int byteIndex = i / pixelsPerByte;
                 int position = i % pixelsPerByte;
-
                 int shift = 8 - bitsPerPixel * (position + 1);
 
                 int paletteIndex = (Data[byteIndex] >> shift) & mask;
 
-                Color color = Palette[paletteIndex];
-
                 int x = i % Width;
                 int y = i / Width;
 
+                int off = y * fgStride + x * 4;
+
                 if (hasTransparency && paletteIndex == TransparentIndex)
                 {
-                    // Transparent pixel
-                    fg.SetPixel(x, y, Color.FromArgb(0, color.R, color.G, color.B));
+                    // Fully transparent pixel: all bytes zero
+                    fgBuffer[off + 0] = 0;
+                    fgBuffer[off + 1] = 0;
+                    fgBuffer[off + 2] = 0;
+                    fgBuffer[off + 3] = 0;
                 }
                 else
                 {
-                    fg.SetPixel(x, y, color);
+                    Color color = Palette[paletteIndex];
+                    fgBuffer[off + 0] = color.B;
+                    fgBuffer[off + 1] = color.G;
+                    fgBuffer[off + 2] = color.R;
+                    fgBuffer[off + 3] = 255;
                 }
             }
 
+            // If non-preview, return a 32bpp bitmap constructed from fgBuffer
             if (!preview)
             {
+                var fg = new Bitmap(Width, Height, PixelFormat.Format32bppArgb);
+                var bd = fg.LockBits(new Rectangle(0, 0, Width, Height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+                try
+                {
+                    Marshal.Copy(fgBuffer, 0, bd.Scan0, fgBuffer.Length);
+                }
+                finally
+                {
+                    fg.UnlockBits(bd);
+                }
+
                 return fg;
             }
 
-            // Preview: composite onto checkerboard background and return 24bpp image
+            // Preview: build 24bpp checkerboard then copy opaque pixels from fgBuffer
             var previewBmp = new Bitmap(Width, Height, PixelFormat.Format24bppRgb);
 
-            using (Graphics g = Graphics.FromImage(previewBmp))
+            int cell = 8;
+            Color c1 = Color.FromArgb(220, 220, 220);
+            Color c2 = Color.FromArgb(180, 180, 180);
+
+            int pbStride = ((Width * 3 + 3) / 4) * 4;
+            byte[] pbBuffer = new byte[pbStride * Height];
+
+            // Fill checkerboard
+            for (int y = 0; y < Height; y++)
             {
-                int cell = 8;
-                Color c1 = Color.FromArgb(220, 220, 220);
-                Color c2 = Color.FromArgb(180, 180, 180);
-
-                for (int y = 0; y < previewBmp.Height; y += cell)
+                for (int x = 0; x < Width; x++)
                 {
-                    for (int x = 0; x < previewBmp.Width; x += cell)
-                    {
-                        bool odd = ((x / cell) + (y / cell)) % 2 == 1;
-                        using (Brush b = new SolidBrush(odd ? c1 : c2))
-                        {
-                            g.FillRectangle(b, x, y, cell, cell);
-                        }
-                    }
-                }
+                    bool odd = ((x / cell) + (y / cell)) % 2 == 1;
+                    Color baseColor = odd ? c1 : c2;
 
-                g.DrawImage(fg, 0, 0, Width, Height);
+                    int off = y * pbStride + x * 3;
+                    pbBuffer[off + 0] = baseColor.B;
+                    pbBuffer[off + 1] = baseColor.G;
+                    pbBuffer[off + 2] = baseColor.R;
+                }
             }
 
-            fg.Dispose();
+            // Copy opaque pixels from fgBuffer to pbBuffer
+            for (int y = 0; y < Height; y++)
+            {
+                for (int x = 0; x < Width; x++)
+                {
+                    int i = y * Width + x;
+                    int foff = y * fgStride + x * 4;
 
-            // Placeholder no-op change inserted by patch
+                    byte a = fgBuffer[foff + 3];
+                    if (a == 0)
+                        continue;
+
+                    int pbOff = y * pbStride + x * 3;
+                    pbBuffer[pbOff + 0] = fgBuffer[foff + 0];
+                    pbBuffer[pbOff + 1] = fgBuffer[foff + 1];
+                    pbBuffer[pbOff + 2] = fgBuffer[foff + 2];
+                }
+            }
+
+            var bd2 = previewBmp.LockBits(new Rectangle(0, 0, Width, Height), ImageLockMode.WriteOnly, PixelFormat.Format24bppRgb);
+            try
+            {
+                Marshal.Copy(pbBuffer, 0, bd2.Scan0, pbBuffer.Length);
+            }
+            finally
+            {
+                previewBmp.UnlockBits(bd2);
+            }
+
             return previewBmp;
         }
 
