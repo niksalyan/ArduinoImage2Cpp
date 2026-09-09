@@ -357,41 +357,36 @@ public static class ArduinoImageConverter
         // Build palette excluding transparent pixels when appropriate
         Color[] palette;
 
-        if (data.Palette.UseCustomPalette && data.Palette.Colors.Count >= 2)
+        if (hasTransparentColor)
         {
-            palette = data.Palette.Colors.ToArray();
-        }
-        else
-        {
-            if (hasTransparentColor)
+            var list = new List<Color>(pixels.Length);
+
+            for (int i = 0; i < pixels.Length; i++)
             {
-                var list = new List<Color>(pixels.Length);
+                if (!transparentMask[i])
+                    list.Add(pixels[i]);
+            }
 
-                for (int i = 0; i < pixels.Length; i++)
-                {
-                    if (!transparentMask[i])
-                        list.Add(pixels[i]);
-                }
-
-                if (list.Count == 0)
-                {
-                    // all pixels transparent: fallback to a single black color
-                    palette = new Color[] { Color.Black };
-                }
-                else
-                {
-                    palette = BuildPalette(
-                        list.ToArray(),
-                        (int)Math.Min(colorsCount, data.Input.MaxColors));
-                }
+            if (list.Count == 0)
+            {
+                // all pixels transparent: fallback to a single black color
+                palette = new Color[] { Color.Black };
             }
             else
             {
                 palette = BuildPalette(
-                    pixels,
+                    list.ToArray(),
                     (int)Math.Min(colorsCount, data.Input.MaxColors));
             }
         }
+        else
+        {
+            palette = BuildPalette(
+                pixels,
+                (int)Math.Min(colorsCount, data.Input.MaxColors));
+        }
+
+        palette = palette.Concat(data.Palette.IncludeColors).ToArray();
 
         // Determine transparent palette index (nearest color in the palette)
         int computedTransparentIndex = -1;

@@ -22,6 +22,7 @@ namespace Image2Cpp.Models
         [Category("Options"), Description("Image processing filters applied after resizing and before palette conversion.")]
         public DataFiltersModel Filters { get; set; } = new DataFiltersModel();
 
+        [Category("Options")]
         public DataPaletteModel Palette { get; set; } = new DataPaletteModel();
 
         [Category("Options")]
@@ -66,17 +67,11 @@ namespace Image2Cpp.Models
     public class DataPaletteModel
     {
 
-        public bool UseCustomPalette { get; set; } = false;
-        public List<Color> Colors { get; set; } = new List<Color>() { 
-            Color.Black,
-            Color.Red,
-            Color.Green,
-            Color.Blue
-        };
+        public List<Color> IncludeColors { get; set; } = new List<Color>() { };
 
         public override string ToString()
         {
-            return Colors.Count + " colors";
+            return IncludeColors.Count > 0 ? "+" + IncludeColors.Count + " colors" : "";
         }
     }
 
@@ -155,9 +150,6 @@ namespace Image2Cpp.Models
         [Description("Tolerance for transparent color matching (Euclidean distance, 0 = exact match).")]
         public int TransparentTolerance { get; set; } = 0;
 
-        [Description("Optimize box rendering with the fast fillRect API when available.")]
-        public bool FastBox { get; set; } = false;
-
         public uint DetailLevel { get; set; } = 1;
 
 
@@ -171,6 +163,7 @@ namespace Image2Cpp.Models
     public enum RenderType
     {
         ArduinoPixel,
-        ArduinoImageBox
+        ArduinoImageBox,
+        ArduinoImageBoxFast
     }
 }

@@ -307,7 +307,7 @@ public static class ArduinoImageBoxConverter
                 identifier,
                 macroName,
                 data.Output.UseColor565,
-                data.Output.FastBox,
+                data.RenderMethod == RenderType.ArduinoImageBoxFast,
                 hasTransparency);
             }
             
