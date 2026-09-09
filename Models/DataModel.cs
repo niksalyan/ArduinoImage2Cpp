@@ -54,6 +54,12 @@ namespace Image2Cpp.Models
         [Description("Crop padding (pixels) applied before resizing. Values are Left/Top/Right/Bottom.")]
         public Padding Crop { get; set; } = new Padding();
 
+        [Description("Flip image horizontally before resizing.")]
+        public bool FlipX { get; set; } = false;
+
+        [Description("Flip image vertically before resizing.")]
+        public bool FlipY { get; set; } = false;
+
 
         // CropEnabled property removed: check Crop rectangle values directly when needed.
 

@@ -588,6 +588,10 @@ public static class ArduinoImageConverter
         
         var p = input.Input.Crop; // Padding
         bool cropEnabled = (p.Left + p.Top + p.Right + p.Bottom) > 0;
+
+        // Flipping flags from input model
+        bool flipX = input.Input.FlipX;
+        bool flipY = input.Input.FlipY;
         if (cropEnabled)
         {
             // compute source rect from padding
@@ -605,11 +609,26 @@ public static class ArduinoImageConverter
             {
                 var srcRect = new Rectangle(srcX, srcY, srcW, srcH);
 
+                // Apply flipping transform if requested
+                if (flipX || flipY)
+                {
+                    // Translate to flip around image center (destination size)
+                    float tx = flipX ? result.Width : 0f;
+                    float ty = flipY ? result.Height : 0f;
+                    g.TranslateTransform(tx, ty);
+                    g.ScaleTransform(flipX ? -1f : 1f, flipY ? -1f : 1f);
+                }
+
                 g.DrawImage(
                     input.Image,
                     new Rectangle(0, 0, input.Input.Resize.Width, input.Input.Resize.Height),
                     srcRect,
                     GraphicsUnit.Pixel);
+
+                if (flipX || flipY)
+                {
+                    g.ResetTransform();
+                }
             }
             else
             {
@@ -619,9 +638,22 @@ public static class ArduinoImageConverter
         else
         {
                 // Draw image preserving alpha
+                if (flipX || flipY)
+                {
+                    float tx = flipX ? result.Width : 0f;
+                    float ty = flipY ? result.Height : 0f;
+                    g.TranslateTransform(tx, ty);
+                    g.ScaleTransform(flipX ? -1f : 1f, flipY ? -1f : 1f);
+                }
+
                 g.DrawImage(
                 input.Image,
                 new Rectangle(0, 0, input.Input.Resize.Width, input.Input.Resize.Height));
+
+                if (flipX || flipY)
+                {
+                    g.ResetTransform();
+                }
         }
         
 
