@@ -319,23 +319,47 @@ public static class ArduinoImageConverter
 
         using Bitmap resized = GetImage(data);    
 
+        // Read pixels including alpha channel so transparent source pixels are detected
         Color[] pixels = GetPixels(resized);
 
         // --------------------------------------------------
-        // Handle transparent color + tolerance (Euclidean)
+        // Handle transparent color + tolerance (Euclidean) and source alpha
         // - Support TransparentFromTopLeft: take effective transparent color from top-left pixel
+        // - Treat any pixel with alpha < 255 as transparent (mask)
         // --------------------------------------------------
         Color effectiveTransparentColor = data.Output.TransparentColor;
-        if (data.Output.TransparentFromTopLeft)
+        if (data.Output.TransparentFromTopLeft && effectiveTransparentColor.IsEmpty && pixels.Length > 0)
         {
-            effectiveTransparentColor = resized.GetPixel(0, 0); // Ensure pixel data is loaded
+            // top-left pixel after resize/crop
+            effectiveTransparentColor = pixels[0];
         }
 
-        bool hasTransparentColor = !effectiveTransparentColor.IsEmpty;
+        // Detect any source alpha transparency
+        bool hasAlphaTransparency = false;
+        for (int i = 0; i < pixels.Length; i++)
+        {
+            if (pixels[i].A < 255)
+            {
+                hasAlphaTransparency = true;
+                break;
+            }
+        }
+
+        bool hasTransparentColor = !effectiveTransparentColor.IsEmpty || hasAlphaTransparency;
 
         bool[] transparentMask = new bool[pixels.Length];
 
-        if (hasTransparentColor)
+        // First mark pixels that are transparent due to source alpha
+        if (hasAlphaTransparency)
+        {
+            for (int i = 0; i < pixels.Length; i++)
+            {
+                transparentMask[i] = pixels[i].A < 190;
+            }
+        }
+
+        // Then also mark pixels that match the transparent color within tolerance
+        if (!effectiveTransparentColor.IsEmpty)
         {
             int tol = Math.Max(0, data.Output.TransparentTolerance);
             long tol2 = (long)tol * (long)tol;
@@ -350,12 +374,16 @@ public static class ArduinoImageConverter
 
                 long dist2 = (long)dr * dr + (long)dg * dg + (long)db * db;
 
-                transparentMask[i] = dist2 <= tol2;
+                if (dist2 <= tol2)
+                    transparentMask[i] = true;
             }
         }
 
         // Build palette excluding transparent pixels when appropriate
         Color[] palette;
+
+        int maxPaletteSlots = GetColorsCount(data.Output.Palette);
+        int maxColorsAllowed = (int)Math.Min(maxPaletteSlots, data.Input.MaxColors);
 
         if (hasTransparentColor)
         {
@@ -369,50 +397,94 @@ public static class ArduinoImageConverter
 
             if (list.Count == 0)
             {
-                // all pixels transparent: fallback to a single black color
-                palette = new Color[] { Color.Black };
+                // all pixels transparent: start with an empty palette
+                palette = new Color[0];
             }
             else
             {
-                palette = BuildPalette(
-                    list.ToArray(),
-                    (int)Math.Min(colorsCount, data.Input.MaxColors));
+                // reserve one slot for the transparent color
+                int paletteSlotsForColors = Math.Max(0, maxColorsAllowed - 1);
+                if (paletteSlotsForColors <= 0)
+                {
+                    // no room for colors except the transparent one
+                    palette = new Color[0];
+                }
+                else
+                {
+                    palette = BuildPalette(
+                        list.ToArray(),
+                        paletteSlotsForColors);
+                }
             }
         }
         else
         {
             palette = BuildPalette(
                 pixels,
-                (int)Math.Min(colorsCount, data.Input.MaxColors));
+                maxColorsAllowed);
         }
 
-        palette = palette.Concat(data.Palette.IncludeColors).ToArray();
-
-        // Determine transparent palette index (nearest color in the palette)
+        // Build final palette list: if transparency requested, put transparent color at palette[0]
+        var palList = new List<Color>();
         int computedTransparentIndex = -1;
-        if (hasTransparentColor && palette.Length > 0)
+
+        if (hasTransparentColor)
         {
-            // Use the same effective transparent color as used to compute the mask
-            Color tc = data.Output.TransparentFromTopLeft && data.Output.TransparentColor.IsEmpty && pixels.Length > 0
-                ? pixels[0]
-                : data.Output.TransparentColor;
-            long best = long.MaxValue;
-            int bestIdx = 0;
-            for (int i = 0; i < palette.Length; i++)
+            // Determine representative RGB for transparent pixels
+            Color tc = effectiveTransparentColor;
+            if (tc.IsEmpty && hasAlphaTransparency)
             {
-                int dr = palette[i].R - tc.R;
-                int dg = palette[i].G - tc.G;
-                int db = palette[i].B - tc.B;
-                long d2 = (long)dr * dr + (long)dg * dg + (long)db * db;
-                if (d2 < best)
+                long sr = 0, sg = 0, sb = 0;
+                int scount = 0;
+                for (int i = 0; i < pixels.Length; i++)
                 {
-                    best = d2;
-                    bestIdx = i;
+                    if (transparentMask[i])
+                    {
+                        sr += pixels[i].R;
+                        sg += pixels[i].G;
+                        sb += pixels[i].B;
+                        scount++;
+                    }
+                }
+
+                if (scount > 0)
+                {
+                    tc = Color.FromArgb((int)(sr / scount), (int)(sg / scount), (int)(sb / scount));
+                }
+                else if (pixels.Length > 0)
+                {
+                    tc = pixels[0];
                 }
             }
 
-            computedTransparentIndex = bestIdx;
+            // Ensure transparent color occupies palette index 0
+            palList.Add(Color.FromArgb(tc.R, tc.G, tc.B));
+            computedTransparentIndex = 0;
+
+            // Append computed palette colors (from non-transparent pixels) up to remaining slots
+            int remainingSlots = Math.Max(0, maxPaletteSlots - 1);
+            for (int i = 0; i < palette.Length && palList.Count < 1 + remainingSlots; i++)
+            {
+                palList.Add(palette[i]);
+            }
+
+            // Append include colors if space remains
+            for (int i = 0; i < data.Palette.IncludeColors.Count && palList.Count < maxPaletteSlots; i++)
+            {
+                palList.Add(data.Palette.IncludeColors[i]);
+            }
         }
+        else
+        {
+            // No transparency: start with computed palette and append include colors
+            palList.AddRange(palette);
+            for (int i = 0; i < data.Palette.IncludeColors.Count && palList.Count < maxPaletteSlots; i++)
+            {
+                palList.Add(data.Palette.IncludeColors[i]);
+            }
+        }
+
+        palette = palList.ToArray();
 
         byte[] indexes;
 
@@ -422,13 +494,17 @@ public static class ArduinoImageConverter
                 pixels,
                 data.Input.Resize.Width,
                 data.Input.Resize.Height,
-                palette);
+                palette,
+                transparentMask,
+                computedTransparentIndex);
         }
         else
         {
             indexes = MapToPalette(
                 pixels,
-                palette);
+                palette,
+                transparentMask,
+                computedTransparentIndex);
         }
 
         // Apply transparent index to masked pixels (override mapped indexes)
@@ -483,14 +559,18 @@ public static class ArduinoImageConverter
     // RESIZE
     // ============================================================
 
-    private static Bitmap GetImage(DataModel input)
-    {
+        private static Bitmap GetImage(DataModel input)
+        {
+        // Use 32bpp with alpha to preserve source transparency through crop/resize
         Bitmap result = new Bitmap(
             input.Input.Resize.Width,
             input.Input.Resize.Height,
-            PixelFormat.Format24bppRgb);
+            PixelFormat.Format32bppArgb);
 
         using Graphics g = Graphics.FromImage(result);
+        g.CompositingMode = CompositingMode.SourceOver;
+        // Start fully transparent
+        g.Clear(Color.Transparent);
 
         if (input.Input.Bicubic)
         {
@@ -538,7 +618,8 @@ public static class ArduinoImageConverter
         }
         else
         {
-            g.DrawImage(
+                // Draw image preserving alpha
+                g.DrawImage(
                 input.Image,
                 new Rectangle(0, 0, input.Input.Resize.Width, input.Input.Resize.Height));
         }
@@ -772,18 +853,27 @@ public static class ArduinoImageConverter
     // MAP COLORS
     // ============================================================
 
-    private static byte[] MapToPalette(
+        private static byte[] MapToPalette(
         Color[] pixels,
-        Color[] palette)
+        Color[] palette,
+        bool[] transparentMask,
+        int transparentIndex)
     {
         byte[] indexes = new byte[pixels.Length];
 
         for (int i = 0; i < pixels.Length; i++)
         {
-            indexes[i] =
-                (byte)FindNearestColor(
-                    pixels[i],
-                    palette);
+            if (transparentMask != null && i < transparentMask.Length && transparentMask[i])
+            {
+                indexes[i] = (byte)(transparentIndex >= 0 ? transparentIndex : 0);
+            }
+            else
+            {
+                indexes[i] =
+                    (byte)FindNearestColor(
+                        pixels[i],
+                        palette);
+            }
         }
 
         return indexes;
@@ -794,11 +884,13 @@ public static class ArduinoImageConverter
     // FLOYD-STEINBERG DITHERING
     // ============================================================
 
-    private static byte[] Dither(
+        private static byte[] Dither(
         Color[] pixels,
         int width,
         int height,
-        Color[] palette)
+        Color[] palette,
+        bool[] transparentMask,
+        int transparentIndex)
     {
         byte[] indexes = new byte[pixels.Length];
 
@@ -825,6 +917,13 @@ public static class ArduinoImageConverter
             {
                 int pixelIndex =
                     y * width + x;
+
+                // If this pixel is marked transparent, assign transparent index and skip error diffusion
+                if (transparentMask != null && pixelIndex < transparentMask.Length && transparentMask[pixelIndex])
+                {
+                    indexes[pixelIndex] = (byte)(transparentIndex >= 0 ? transparentIndex : 0);
+                    continue;
+                }
 
                 Color current = Color.FromArgb(
                     ClampToByte(r[pixelIndex]),
