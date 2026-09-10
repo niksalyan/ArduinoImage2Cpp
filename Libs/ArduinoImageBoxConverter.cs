@@ -675,6 +675,12 @@ static inline void {identifier}DrawImage(
             color);
     }}
 }}
+
+
+static inline void {identifier}() 
+{{
+    {identifier}DrawImage(0, 0, 2, 2);
+}}
 ");
     }
 
