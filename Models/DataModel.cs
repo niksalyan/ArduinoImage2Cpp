@@ -131,8 +131,7 @@ namespace Image2Cpp.Models
 
         
 
-        [Description("Use 565 color format for generated palette values.")]
-        public bool UseColor565 { get; set; } = true;
+        // Palette values are always emitted in RGB565 format.
 
         [Description("Include helper rendering functions in the generated Arduino code.")]
         public bool IncludeRenderFunction { get; set; } = true;

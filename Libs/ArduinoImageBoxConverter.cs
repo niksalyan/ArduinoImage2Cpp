@@ -241,49 +241,28 @@ public static class ArduinoImageBoxConverter
             // PALETTE
             // ----------------------------------------------------
 
-            if (data.Output.UseColor565)
+            // Palette is always emitted in RGB565 uint16_t values
+            sb.AppendLine(
+                $"const uint16_t {identifier}Palette" +
+                $"[{ColorsCount}] PROGMEM =");
+
+            sb.AppendLine("{");
+
+            for (int i = 0; i < Palette.Length; i++)
             {
-                sb.AppendLine(
-                    $"const uint16_t {identifier}Palette" +
-                    $"[{ColorsCount}] PROGMEM =");
+                ushort rgb565 =
+                    ToRgb565(Palette[i]);
 
-                sb.AppendLine("{");
+                sb.Append(
+                    $"    0x{rgb565:X4}");
 
-                for (int i = 0; i < Palette.Length; i++)
-                {
-                    ushort rgb565 =
-                        ToRgb565(Palette[i]);
+                if (i < Palette.Length - 1)
+                    sb.Append(",");
 
-                    sb.Append(
-                        $"    0x{rgb565:X4}");
-
-                    if (i < Palette.Length - 1)
-                        sb.Append(",");
-
-                    sb.AppendLine();
-                }
-
-                sb.AppendLine("};");
+                sb.AppendLine();
             }
-            else
-            {
-                sb.AppendLine(
-                    $"const uint8_t {identifier}Palette" +
-                    $"[{ColorsCount}][3] PROGMEM =");
 
-                sb.AppendLine("{");
-
-                for (int i = 0; i < Palette.Length; i++)
-                {
-                    Color c = Palette[i];
-
-                    sb.AppendLine(
-                        $"    {{ {c.R}, {c.G}, {c.B} }}" +
-                        (i < Palette.Length - 1 ? "," : ""));
-                }
-
-                sb.AppendLine("};");
-            }
+            sb.AppendLine("};");
 
             sb.AppendLine();
 
@@ -302,7 +281,6 @@ public static class ArduinoImageBoxConverter
                 sb,
                 identifier,
                 macroName,
-                data.Output.UseColor565,
                 data.RenderMethod == RenderType.ArduinoImageBoxFast,
                 hasTransparency);
             }
@@ -745,7 +723,6 @@ public static class ArduinoImageBoxConverter
         StringBuilder sb,
         string identifier,
         string macroName,
-        bool useColor565,
         bool fastApi,
         bool hasTransparency)
     {
@@ -801,41 +778,11 @@ public static class ArduinoImageBoxConverter
         // COLOR
         // ========================================================
 
-        if (useColor565)
-        {
-            sb.AppendLine(
-                $"        uint16_t color = " +
-                $"pgm_read_word(" +
-                $"&{identifier}Palette[box.color]);");
-        }
-        else
-        {
-            sb.AppendLine(
-                $"        uint8_t r = pgm_read_byte(" +
-                $"&{identifier}Palette[box.color][0]);");
-
-            sb.AppendLine(
-                $"        uint8_t g = pgm_read_byte(" +
-                $"&{identifier}Palette[box.color][1]);");
-
-            sb.AppendLine(
-                $"        uint8_t b = pgm_read_byte(" +
-                $"&{identifier}Palette[box.color][2]);");
-
-            sb.AppendLine();
-
-            sb.AppendLine(
-                "        uint16_t color = (uint16_t)(");
-
-            sb.AppendLine(
-                "            ((r & 0xF8) << 8) |");
-
-            sb.AppendLine(
-                "            ((g & 0xFC) << 3) |");
-
-            sb.AppendLine(
-                "            (b >> 3));");
-        }
+        // Palette stored as RGB565 uint16_t
+        sb.AppendLine(
+            $"        uint16_t color = " +
+            $"pgm_read_word(" +
+            $"&{identifier}Palette[box.color]);");
 
         sb.AppendLine();
 
