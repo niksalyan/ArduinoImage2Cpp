@@ -76,12 +76,12 @@ namespace Image2Cpp
         {
             try
             {
-                
+
                 if (dataInputModel.Image != null)
                 {
                     var indexed = ArduinoImageConverter.Convert(dataInputModel);
-                    
-                    switch(dataInputModel.RenderMethod)
+
+                    switch (dataInputModel.RenderMethod)
                     {
                         case RenderType.ArduinoPixel:
                             var r = indexed;
@@ -100,8 +100,8 @@ namespace Image2Cpp
                             break;
                     }
 
-                    
-                    
+
+
                 }
                 else
                 {
@@ -114,6 +114,16 @@ namespace Image2Cpp
                 pictureBox1.Image = null;
                 textBox1.Text = $"Error: {ex.Message}";
             }
+        }
+
+        private void resetToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            dataInputModel = new DataModel();
+            propertyGrid1.SelectedObject = dataInputModel;
+            pictureBox1.Image = null;
+            textBox1.Text = "";
+            propertyGrid1.Refresh();
+            propertyGrid1.ExpandAllGridItems();
         }
     }
 }
