@@ -290,12 +290,8 @@ public static class ArduinoImageBoxConverter
             // ----------------------------------------------------
             // TRANSPARENCY
             // ----------------------------------------------------
+            // Do not emit a TRANSPARENT_INDEX macro. Palette index 0 is always treated as transparent
             bool hasTransparency = TransparentIndex >= 0 && this.TransparentIndex < Palette.Length;
-            if (hasTransparency)
-            {
-                sb.AppendLine($"#define {macroName}_TRANSPARENT_INDEX   {this.TransparentIndex}");
-                sb.AppendLine();
-            }
 
             // ----------------------------------------------------
             // DRAW IMAGE
@@ -796,7 +792,7 @@ public static class ArduinoImageBoxConverter
         // -------------------------------------------------------
         if (hasTransparency)
         {
-            sb.AppendLine($"        if (box.color == {macroName}_TRANSPARENT_INDEX)");
+            sb.AppendLine("        if (box.color == 0)");
             sb.AppendLine("            continue;");
             sb.AppendLine();
         }

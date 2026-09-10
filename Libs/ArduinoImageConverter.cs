@@ -148,12 +148,8 @@ public static class ArduinoImageConverter
             // ----------------------------------------------------
             // TRANSPARENCY
             // ----------------------------------------------------
+            // Do not emit a TRANSPARENT_INDEX macro. Palette index 0 is always treated as transparent
             bool hasTransparency = TransparentIndex >= 0 && this.TransparentIndex < Palette.Length;
-            if (hasTransparency)
-            {
-                sb.AppendLine($"#define {macroName}_TRANSPARENT_INDEX   {this.TransparentIndex}");
-                sb.AppendLine();
-            }
 
             // ----------------------------------------------------
             // GET PIXEL
@@ -424,97 +420,68 @@ public static class ArduinoImageConverter
                 maxColorsAllowed);
         }
 
-        // Build final palette list: if transparency requested, put transparent color at palette[0]
+        // Build final palette list: always reserve palette[0] as the transparent slot.
         var palList = new List<Color>();
-        int computedTransparentIndex = -1;
 
-        if (hasTransparentColor)
+        // Representative transparent color (if requested) or fully transparent black
+        Color transparentRep = hasTransparentColor ? effectiveTransparentColor : Color.FromArgb(0, 0, 0);
+        if (transparentRep.IsEmpty)
+            transparentRep = Color.FromArgb(0, 0, 0);
+
+        palList.Add(Color.FromArgb(transparentRep.R, transparentRep.G, transparentRep.B)); // index 0 == transparent
+
+        // Append computed palette colors (from non-transparent pixels) up to remaining slots
+        int remainingSlots = Math.Max(0, maxPaletteSlots - 1);
+        for (int i = 0; i < palette.Length && palList.Count < 1 + remainingSlots; i++)
         {
-            // Determine representative RGB for transparent pixels
-            Color tc = effectiveTransparentColor;
-            if (tc.IsEmpty && hasAlphaTransparency)
-            {
-                long sr = 0, sg = 0, sb = 0;
-                int scount = 0;
-                for (int i = 0; i < pixels.Length; i++)
-                {
-                    if (transparentMask[i])
-                    {
-                        sr += pixels[i].R;
-                        sg += pixels[i].G;
-                        sb += pixels[i].B;
-                        scount++;
-                    }
-                }
-
-                if (scount > 0)
-                {
-                    tc = Color.FromArgb((int)(sr / scount), (int)(sg / scount), (int)(sb / scount));
-                }
-                else if (pixels.Length > 0)
-                {
-                    tc = pixels[0];
-                }
-            }
-
-            // Ensure transparent color occupies palette index 0
-            palList.Add(Color.FromArgb(tc.R, tc.G, tc.B));
-            computedTransparentIndex = 0;
-
-            // Append computed palette colors (from non-transparent pixels) up to remaining slots
-            int remainingSlots = Math.Max(0, maxPaletteSlots - 1);
-            for (int i = 0; i < palette.Length && palList.Count < 1 + remainingSlots; i++)
-            {
-                palList.Add(palette[i]);
-            }
-
-            // Append include colors if space remains
-            for (int i = 0; i < data.Palette.IncludeColors.Count && palList.Count < maxPaletteSlots; i++)
-            {
-                palList.Add(data.Palette.IncludeColors[i]);
-            }
+            palList.Add(palette[i]);
         }
-        else
+
+        // Append include colors if space remains
+        for (int i = 0; i < data.Palette.IncludeColors.Count && palList.Count < maxPaletteSlots; i++)
         {
-            // No transparency: start with computed palette and append include colors
-            palList.AddRange(palette);
-            for (int i = 0; i < data.Palette.IncludeColors.Count && palList.Count < maxPaletteSlots; i++)
-            {
-                palList.Add(data.Palette.IncludeColors[i]);
-            }
+            palList.Add(data.Palette.IncludeColors[i]);
         }
 
         palette = palList.ToArray();
 
-        byte[] indexes;
+        // Map pixels to palette excluding the transparent slot (shifted by +1 afterwards)
+        Color[] mappingPalette = palette.Skip(1).ToArray();
 
-        if (data.Input.Dithering)
+        byte[] mappedIndexes;
+
+        if (mappingPalette.Length == 0)
         {
-            indexes = Dither(
+            mappedIndexes = new byte[pixels.Length];
+            for (int i = 0; i < mappedIndexes.Length; i++) mappedIndexes[i] = 0;
+        }
+        else if (data.Input.Dithering)
+        {
+            mappedIndexes = Dither(
                 pixels,
                 data.Input.Resize.Width,
                 data.Input.Resize.Height,
-                palette,
-                transparentMask,
-                computedTransparentIndex);
+                mappingPalette,
+                null,
+                -1);
         }
         else
         {
-            indexes = MapToPalette(
+            mappedIndexes = MapToPalette(
                 pixels,
-                palette,
-                transparentMask,
-                computedTransparentIndex);
+                mappingPalette,
+                null,
+                -1);
         }
 
-        // Apply transparent index to masked pixels (override mapped indexes)
-        if (hasTransparentColor && computedTransparentIndex >= 0)
+        // Build final indexes: masked pixels become 0, others are mappedIndexes + 1
+        byte[] indexes = new byte[pixels.Length];
+        for (int i = 0; i < pixels.Length; i++)
         {
-            for (int i = 0; i < pixels.Length; i++)
-            {
-                if (transparentMask[i])
-                    indexes[i] = (byte)computedTransparentIndex;
-            }
+            if (hasTransparentColor && transparentMask[i])
+                indexes[i] = 0;
+            else
+                indexes[i] = (byte)(mappedIndexes[i] + 1);
         }
 
         byte[] packedData = PackIndexes(
@@ -523,9 +490,7 @@ public static class ArduinoImageConverter
             data.Input.Resize.Height,
             data.Output.Palette);
 
-        int finalTransparentIndex = (hasTransparentColor && computedTransparentIndex >= 0)
-            ? computedTransparentIndex
-            : -1;
+        int finalTransparentIndex = (hasTransparentColor) ? 0 : -1;
 
         return new IndexedImage(
             data.Input.Resize.Width,
@@ -1304,7 +1269,7 @@ public static class ArduinoImageConverter
         if (hasTransparency)
         {
             sb.AppendLine(
-                $"    if (paletteIndex == {macroName}_TRANSPARENT_INDEX)");
+                "    if (paletteIndex == 0)");
             sb.AppendLine(
                 "        return 0xFFFF;");
             sb.AppendLine();
