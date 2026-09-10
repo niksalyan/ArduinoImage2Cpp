@@ -19,6 +19,9 @@ namespace Image2Cpp.Models
         [Category("Input"), Description("Render type for the output image")]
         public RenderType RenderMethod { get; set; } = RenderType.ArduinoPixel;
 
+        [Category("Input"), Description("Render type for the output image")]
+        public bool ProgmemFar { get; set; } = false;
+
         [Category("Options"), Description("Image processing filters applied after resizing and before palette conversion.")]
         public DataFiltersModel Filters { get; set; } = new DataFiltersModel();
 
